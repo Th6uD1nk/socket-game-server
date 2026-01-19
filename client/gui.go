@@ -7,73 +7,114 @@ import (
   "github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-type Game struct {
-  angle float64
-}
-
 type Vec3 struct {
   X, Y, Z float64
 }
 
-func project(v Vec3, screenW, screenH float64) (float32, float32) {
-  angleX := math.Pi / 6
-  angleY := math.Pi / 4
+type Renderer struct {
+  angleX float64
+  angleY float64
+  scale  float64
+}
 
-  x := v.X*math.Cos(angleY) - v.Z*math.Sin(angleY)
-  z := v.X*math.Sin(angleY) + v.Z*math.Cos(angleY)
+func NewRenderer() *Renderer {
+  return &Renderer{
+    angleX: math.Pi / 6.0,
+    angleY: math.Pi / 4.0,
+    scale:  50.0,
+  }
+}
+
+func (r *Renderer) project(v Vec3, screenW, screenH float64) (float32, float32) {
+  x := v.X*math.Cos(r.angleY) - v.Z*math.Sin(r.angleY)
+  z := v.X*math.Sin(r.angleY) + v.Z*math.Cos(r.angleY)
   y := v.Y
-
-  y2 := y*math.Cos(angleX) - z*math.Sin(angleX)
-
-  scale := 50.0
-  px := x*scale + screenW/2
-  py := -y2*scale + screenH/2
-
+  
+  y2 := y*math.Cos(r.angleX) - z*math.Sin(r.angleX)
+  
+  px := x*r.scale + screenW/2
+  py := -y2*r.scale + screenH/2
   return float32(px), float32(py)
 }
 
-func (g *Game) Update() error { return nil }
-
-func (g *Game) Draw(screen *ebiten.Image) {
-  screen.Fill(color.RGBA{30, 30, 40, 255})
-
+func (r *Renderer) DrawGrid(screen *ebiten.Image, gridSize int) {
   w, h := screen.Size()
   screenW, screenH := float64(w), float64(h)
-
-  gridSize := 5
+  
+  gridColor := color.RGBA{60, 60, 80, 255}
+  
   for i := -gridSize; i <= gridSize; i++ {
-    x1, y1 := project(Vec3{float64(i), 0, float64(-gridSize)}, screenW, screenH)
-    x2, y2 := project(Vec3{float64(i), 0, float64(gridSize)}, screenW, screenH)
-    vector.StrokeLine(screen, x1, y1, x2, y2, 1, color.RGBA{60, 60, 80, 255}, false)
-
-    z1, w1 := project(Vec3{float64(-gridSize), 0, float64(i)}, screenW, screenH)
-    z2, w2 := project(Vec3{float64(gridSize), 0, float64(i)}, screenW, screenH)
-    vector.StrokeLine(screen, z1, w1, z2, w2, 1, color.RGBA{60, 60, 80, 255}, false)
+    x1, y1 := r.project(Vec3{X: float64(i), Y: 0, Z: float64(-gridSize)}, screenW, screenH)
+    x2, y2 := r.project(Vec3{X: float64(i), Y: 0, Z: float64(gridSize)}, screenW, screenH)
+    vector.StrokeLine(screen, x1, y1, x2, y2, 1, gridColor, false)
+    
+    z1, w1 := r.project(Vec3{X: float64(-gridSize), Y: 0, Z: float64(i)}, screenW, screenH)
+    z2, w2 := r.project(Vec3{X: float64(gridSize), Y: 0, Z: float64(i)}, screenW, screenH)
+    vector.StrokeLine(screen, z1, w1, z2, w2, 1, gridColor, false)
   }
+}
 
+func (r *Renderer) DrawCube(screen *ebiten.Image, pos Vec3, cubeColor color.RGBA) {
+  w, h := screen.Size()
+  screenW, screenH := float64(w), float64(h)
+  
   cubeVertices := []Vec3{
-    {-0.5, 0, -0.5}, {0.5, 0, -0.5}, {0.5, 0, 0.5}, {-0.5, 0, 0.5},
-    {-0.5, 1, -0.5}, {0.5, 1, -0.5}, {0.5, 1, 0.5}, {-0.5, 1, 0.5},
+    {pos.X - 0.5, pos.Y, pos.Z - 0.5}, {pos.X + 0.5, pos.Y, pos.Z - 0.5},
+    {pos.X + 0.5, pos.Y, pos.Z + 0.5}, {pos.X - 0.5, pos.Y, pos.Z + 0.5},
+    {pos.X - 0.5, pos.Y + 1, pos.Z - 0.5}, {pos.X + 0.5, pos.Y + 1, pos.Z - 0.5},
+    {pos.X + 0.5, pos.Y + 1, pos.Z + 0.5}, {pos.X - 0.5, pos.Y + 1, pos.Z + 0.5},
   }
-
+  
   var projected [][2]float32
   for _, v := range cubeVertices {
-    px, py := project(v, screenW, screenH)
+    px, py := r.project(v, screenW, screenH)
     projected = append(projected, [2]float32{px, py})
   }
-
+  
+  faces := [][4]int{
+    {0, 1, 5, 4}, // front
+    {1, 2, 6, 5}, // right
+    {2, 3, 7, 6}, // back
+    {3, 0, 4, 7}, // left
+    {4, 5, 6, 7}, // top
+    {0, 1, 2, 3}, // bottom
+  }
+  
+  faceColor := color.RGBA{cubeColor.R / 2, cubeColor.G / 2, cubeColor.B / 2, 200}
+  
+  for _, face := range faces {
+    var path vector.Path
+    path.MoveTo(projected[face[0]][0], projected[face[0]][1])
+    for i := 1; i < 4; i++ {
+      path.LineTo(projected[face[i]][0], projected[face[i]][1])
+    }
+    path.Close()
+    
+    vertices, indices := path.AppendVerticesAndIndicesForFilling(nil, nil)
+    for i := range vertices {
+      vertices[i].ColorR = float32(faceColor.R) / 255
+      vertices[i].ColorG = float32(faceColor.G) / 255
+      vertices[i].ColorB = float32(faceColor.B) / 255
+      vertices[i].ColorA = float32(faceColor.A) / 255
+    }
+    screen.DrawTriangles(vertices, indices, emptyImage, nil)
+  }
+  
   edges := [][2]int{
     {0, 1}, {1, 2}, {2, 3}, {3, 0},
     {4, 5}, {5, 6}, {6, 7}, {7, 4},
     {0, 4}, {1, 5}, {2, 6}, {3, 7},
   }
-
+  
   for _, edge := range edges {
     p1 := projected[edge[0]]
     p2 := projected[edge[1]]
-    vector.StrokeLine(screen, p1[0], p1[1], p2[0], p2[1],
-      2, color.RGBA{0, 255, 100, 255}, false)
+    vector.StrokeLine(screen, p1[0], p1[1], p2[0], p2[1], 2, cubeColor, false)
   }
 }
 
-func (g *Game) Layout(w, h int) (int, int) { return 800, 600 }
+var emptyImage = ebiten.NewImage(1, 1)
+
+func init() {
+  emptyImage.Fill(color.White)
+}

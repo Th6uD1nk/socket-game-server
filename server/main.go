@@ -6,7 +6,23 @@ import (
   "sync"
   "time"
   "math/rand"
+  "encoding/json"
 )
+
+// tmp
+type WorldUpdate struct {
+  Type  string     `json:"type"`
+  Users []UserData `json:"users"`
+}
+
+// tmp
+type UserData struct {
+  ID          string     `json:"id"`
+  UserType    string     `json:"user_type"`
+  Location    [3]float32 `json:"location"`
+  Orientation float32    `json:"orientation"`
+  IsActive    bool       `json:"is_active"`
+}
 
 type Client struct {
   addr     *net.UDPAddr
@@ -107,6 +123,46 @@ func randomSpawn(id string, userType UserType, conn *net.UDPConn, minX, maxX, mi
   return user
 }
 
+func (server *Server) broadcastWorldState() {
+  server.mu.RLock()
+  
+  worldUpdate := WorldUpdate{
+    Type:  "world_update",
+    Users: make([]UserData, 0, len(server.clients)),
+  }
+  
+  for _, client := range server.clients {
+    if client.user != nil {
+      worldUpdate.Users = append(worldUpdate.Users, UserData{
+        ID:          client.user.id,
+        UserType:    string(client.user.userType),
+        Location:    [3]float32{client.user.location.x, client.user.location.y, client.user.location.z},
+        Orientation: client.user.orientation,
+        IsActive:    client.user.isActive,
+      })
+    }
+  }
+  
+  server.mu.RUnlock()
+  
+  // convert to json
+  data, err := json.Marshal(worldUpdate)
+  if err != nil {
+    fmt.Printf("JSON marshal error: %v\n", err)
+    return
+  }
+  
+  // send to all clients
+  server.mu.RLock()
+  for _, client := range server.clients {
+    _, err := server.conn.WriteToUDP(data, client.addr)
+    if err != nil {
+      fmt.Printf("Broadcast error to %s: %v\n", client.addr.String(), err)
+    }
+  }
+  server.mu.RUnlock()
+}
+
 func (server *Server) Start() {
   defer server.conn.Close()
   
@@ -130,6 +186,15 @@ func (server *Server) Start() {
     }
   }()
   
+  // broadcast world state each 100 ms
+  go func() {
+    ticker := time.NewTicker(100 * time.Millisecond)
+    defer ticker.Stop()
+    for range ticker.C {
+      server.broadcastWorldState()
+    }
+  }()
+
   buffer := make([]byte, 1024)
   
   for {
@@ -141,7 +206,7 @@ func (server *Server) Start() {
     
     clientKey := addr.String()
     if _, exists := server.clients[clientKey]; !exists {
-      user := randomSpawn(clientKey, UserTypePlayer, server.conn, 0, 100, 0, 10, 0, 100)
+      user := randomSpawn(clientKey, UserTypePlayer, server.conn, 0, 10, 0, 0, 0, 10)
       
       client := &Client{
         addr:     addr,
@@ -162,11 +227,11 @@ func (server *Server) Start() {
     message := string(buffer[:nByte])
     fmt.Printf("+ received from %s: %s\n", addr.String(), message)
     
-    response := fmt.Sprintf("ACK: %s", message)
-    _, err = server.conn.WriteToUDP([]byte(response), addr)
-    if err != nil {
-      fmt.Printf("Sent error: %v\n", err)
-    }
+    // response := fmt.Sprintf("ACK: %s", message)
+    // _, err = server.conn.WriteToUDP([]byte(response), addr)
+    // if err != nil {
+    //   fmt.Printf("Sent error: %v\n", err)
+    // }
   }
 }
 
