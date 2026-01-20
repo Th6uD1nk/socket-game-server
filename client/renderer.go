@@ -7,33 +7,42 @@ import (
   "github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-type Vec3 struct {
-  X, Y, Z float64
-}
-
 type Renderer struct {
-  angleX float64
-  angleY float64
-  scale  float64
+  angleX     float64
+  angleY     float64
+  fov        float64
+  cameraDist float64
 }
 
 func NewRenderer() *Renderer {
   return &Renderer{
-    angleX: math.Pi / 6.0,
-    angleY: math.Pi / 4.0,
-    scale:  50.0,
+    angleX:     math.Pi / 180.0 * 45.0,
+    angleY:     math.Pi / 180.0 * 10.0,
+    fov:        400.0,
+    cameraDist: 20.0,
   }
 }
 
 func (r *Renderer) project(v Vec3, screenW, screenH float64) (float32, float32) {
-  x := v.X*math.Cos(r.angleY) - v.Z*math.Sin(r.angleY)
-  z := v.X*math.Sin(r.angleY) + v.Z*math.Cos(r.angleY)
-  y := v.Y
-  
-  y2 := y*math.Cos(r.angleX) - z*math.Sin(r.angleX)
-  
-  px := x*r.scale + screenW/2
-  py := -y2*r.scale + screenH/2
+  xh := v.X*math.Cos(r.angleY) - v.Z*math.Sin(r.angleY)
+  zh := v.X*math.Sin(r.angleY) + v.Z*math.Cos(r.angleY)
+
+  yh := v.Y
+  ax := -r.angleX
+
+  yv := yh*math.Cos(ax) - zh*math.Sin(ax)
+  zv := yh*math.Sin(ax) + zh*math.Cos(ax)
+
+  depth := zv + r.cameraDist
+  if depth <= 0.1 {
+    depth = 0.1
+  }
+
+  factor := r.fov / depth
+
+  px := xh*factor + screenW/2
+  py := -yv*factor + screenH/2
+
   return float32(px), float32(py)
 }
 
@@ -59,10 +68,14 @@ func (r *Renderer) DrawCube(screen *ebiten.Image, pos Vec3, cubeColor color.RGBA
   screenW, screenH := float64(w), float64(h)
   
   cubeVertices := []Vec3{
-    {pos.X - 0.5, pos.Y, pos.Z - 0.5}, {pos.X + 0.5, pos.Y, pos.Z - 0.5},
-    {pos.X + 0.5, pos.Y, pos.Z + 0.5}, {pos.X - 0.5, pos.Y, pos.Z + 0.5},
-    {pos.X - 0.5, pos.Y + 1, pos.Z - 0.5}, {pos.X + 0.5, pos.Y + 1, pos.Z - 0.5},
-    {pos.X + 0.5, pos.Y + 1, pos.Z + 0.5}, {pos.X - 0.5, pos.Y + 1, pos.Z + 0.5},
+    {pos.X - 0.5, pos.Y - 0.5, pos.Z - 0.5}, // bottom front left
+    {pos.X + 0.5, pos.Y - 0.5, pos.Z - 0.5}, // bottom front right
+    {pos.X + 0.5, pos.Y - 0.5, pos.Z + 0.5}, // bottom back right
+    {pos.X - 0.5, pos.Y - 0.5, pos.Z + 0.5}, // bottom back left
+    {pos.X - 0.5, pos.Y + 0.5, pos.Z - 0.5}, // top front left
+    {pos.X + 0.5, pos.Y + 0.5, pos.Z - 0.5}, // top front right
+    {pos.X + 0.5, pos.Y + 0.5, pos.Z + 0.5}, // top back right
+    {pos.X - 0.5, pos.Y + 0.5, pos.Z + 0.5}, // top back left
   }
   
   var projected [][2]float32
@@ -109,7 +122,7 @@ func (r *Renderer) DrawCube(screen *ebiten.Image, pos Vec3, cubeColor color.RGBA
   for _, edge := range edges {
     p1 := projected[edge[0]]
     p2 := projected[edge[1]]
-    vector.StrokeLine(screen, p1[0], p1[1], p2[0], p2[1], 2, cubeColor, false)
+    vector.StrokeLine(screen, p1[0], p1[1], p2[0], p2[1], 1, cubeColor, false)
   }
 }
 

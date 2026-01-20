@@ -5,6 +5,10 @@ import (
   "time"
 )
 
+type Vec3 struct {
+  X, Y, Z float64
+}
+
 type UserType string
 
 const (

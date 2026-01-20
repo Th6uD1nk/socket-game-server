@@ -35,7 +35,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
     colorRGB := GetColorForUserType(user.UserType)
     cubeColor := color.RGBA{colorRGB[0], colorRGB[1], colorRGB[2], 255}
     
-    g.renderer.DrawCube(screen, user.Location, cubeColor)
+    location := Vec3{
+      X: user.Location.X + 0.5, 
+      Y: user.Location.Y + 0.5,
+      Z: user.Location.Z + 0.5,
+    }
+  
+    g.renderer.DrawCube(screen, location, cubeColor)
   }
 }
 

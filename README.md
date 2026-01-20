@@ -1,2 +1,2 @@
-# A Realtime Testbed Game Server
+# A socket game server written in Go
 
