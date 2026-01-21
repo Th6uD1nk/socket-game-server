@@ -78,7 +78,7 @@ func (w *WorldState) GetUsersByType(userType UserType) []*User {
 func GetColorForUserType(userType UserType) [3]uint8 {
   switch userType {
   case UserTypePlayer:
-    return [3]uint8{0, 255, 100}
+    return [3]uint8{0, 150, 100}
   case UserTypeBot:
     return [3]uint8{255, 150, 0}
   case UserTypeAdmin:

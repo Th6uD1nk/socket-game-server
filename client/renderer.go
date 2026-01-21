@@ -1,133 +1,214 @@
 package main
 
 import (
-  "image/color"
-  "math"
-  "github.com/hajimehoshi/ebiten/v2"
-  "github.com/hajimehoshi/ebiten/v2/vector"
+  "fmt"
+  "log"
+  "github.com/go-gl/gl/v2.1/gl"
+  "github.com/go-gl/mathgl/mgl32"
 )
 
 type Renderer struct {
-  angleX     float64
-  angleY     float64
-  fov        float64
-  cameraDist float64
+  program   uint32
+  mvpLoc  int32
+  colorLoc  int32
+  positionLoc uint32
+  cameraDist float32
+  angleX   float32
+  angleY   float32
 }
 
 func NewRenderer() *Renderer {
-  return &Renderer{
-    angleX:     math.Pi / 180.0 * 45.0,
-    angleY:     math.Pi / 180.0 * 10.0,
-    fov:        400.0,
-    cameraDist: 20.0,
+  r := &Renderer{
+  cameraDist: 30,
+  angleX:   45,
+  angleY:   12,
+  }
+  r.initShaders()
+  return r
+}
+
+func (r *Renderer) GetCubeEdgesFromVertices(pos Vec3) []float32 {
+  x, y, z := float32(pos.X), float32(pos.Y), float32(pos.Z)
+  s := float32(0.5)
+
+  vertices := [8][3]float32{
+    {x - s, y - s, z - s}, // v0
+    {x + s, y - s, z - s}, // v1
+    {x + s, y + s, z - s}, // v2
+    {x - s, y + s, z - s}, // v3
+    {x - s, y - s, z + s}, // v4
+    {x + s, y - s, z + s}, // v5
+    {x + s, y + s, z + s}, // v6
+    {x - s, y + s, z + s}, // v7
+  }
+
+  edgesIdx := [][2]int{
+    {0, 1}, {1, 2}, {2, 3}, {3, 0}, // Back
+    {4, 5}, {5, 6}, {6, 7}, {7, 4}, // Front
+    {0, 4}, {1, 5}, {2, 6}, {3, 7}, // Sides
+  }
+
+  edges := make([]float32, 0, len(edgesIdx)*6)
+  for _, e := range edgesIdx {
+    edges = append(edges,
+      vertices[e[0]][0], vertices[e[0]][1], vertices[e[0]][2],
+      vertices[e[1]][0], vertices[e[1]][1], vertices[e[1]][2],
+    )
+  }
+  return edges
+}
+
+func (r *Renderer) GetCubeVertices(pos Vec3) []float32 {
+  x, y, z := float32(pos.X), float32(pos.Y), float32(pos.Z)
+  s := float32(0.5)
+  return []float32{
+    // Front
+    x-s, y-s, z+s,  x+s, y-s, z+s,  x+s, y+s, z+s,
+    x-s, y-s, z+s,  x+s, y+s, z+s,  x-s, y+s, z+s,
+    // Back
+    x+s, y-s, z-s,  x-s, y-s, z-s,  x-s, y+s, z-s,
+    x+s, y-s, z-s,  x-s, y+s, z-s,  x+s, y+s, z-s,
+    // Left
+    x-s, y-s, z-s,  x-s, y-s, z+s,  x-s, y+s, z+s,
+    x-s, y-s, z-s,  x-s, y+s, z+s,  x-s, y+s, z-s,
+    // Right
+    x+s, y-s, z+s,  x+s, y-s, z-s,  x+s, y+s, z-s,
+    x+s, y-s, z+s,  x+s, y+s, z-s,  x+s, y+s, z+s,
+    // Top
+    x-s, y+s, z+s,  x+s, y+s, z+s,  x+s, y+s, z-s,
+    x-s, y+s, z+s,  x+s, y+s, z-s,  x-s, y+s, z-s,
+    // Bottom
+    x-s, y-s, z-s,  x+s, y-s, z-s,  x+s, y-s, z+s,
+    x-s, y-s, z-s,  x+s, y-s, z+s,  x-s, y-s, z+s,
   }
 }
 
-func (r *Renderer) project(v Vec3, screenW, screenH float64) (float32, float32) {
-  xh := v.X*math.Cos(r.angleY) - v.Z*math.Sin(r.angleY)
-  zh := v.X*math.Sin(r.angleY) + v.Z*math.Cos(r.angleY)
-
-  yh := v.Y
-  ax := -r.angleX
-
-  yv := yh*math.Cos(ax) - zh*math.Sin(ax)
-  zv := yh*math.Sin(ax) + zh*math.Cos(ax)
-
-  depth := zv + r.cameraDist
-  if depth <= 0.1 {
-    depth = 0.1
-  }
-
-  factor := r.fov / depth
-
-  px := xh*factor + screenW/2
-  py := -yv*factor + screenH/2
-
-  return float32(px), float32(py)
-}
-
-func (r *Renderer) DrawGrid(screen *ebiten.Image, gridSize int) {
-  w, h := screen.Size()
-  screenW, screenH := float64(w), float64(h)
-  
-  gridColor := color.RGBA{60, 60, 80, 255}
-  
+func (r *Renderer) GetGridVertices(gridSize int) []float32 {
+  var lines []float32
   for i := -gridSize; i <= gridSize; i++ {
-    x1, y1 := r.project(Vec3{X: float64(i), Y: 0, Z: float64(-gridSize)}, screenW, screenH)
-    x2, y2 := r.project(Vec3{X: float64(i), Y: 0, Z: float64(gridSize)}, screenW, screenH)
-    vector.StrokeLine(screen, x1, y1, x2, y2, 1, gridColor, false)
-    
-    z1, w1 := r.project(Vec3{X: float64(-gridSize), Y: 0, Z: float64(i)}, screenW, screenH)
-    z2, w2 := r.project(Vec3{X: float64(gridSize), Y: 0, Z: float64(i)}, screenW, screenH)
-    vector.StrokeLine(screen, z1, w1, z2, w2, 1, gridColor, false)
+  // X lines
+  lines = append(lines,
+    float32(-gridSize), 0, float32(i),
+    float32(gridSize), 0, float32(i),
+  )
+  // Z lines
+  lines = append(lines,
+    float32(i), 0, float32(-gridSize),
+    float32(i), 0, float32(gridSize),
+  )
   }
+  return lines
 }
 
-func (r *Renderer) DrawCube(screen *ebiten.Image, pos Vec3, cubeColor color.RGBA) {
-  w, h := screen.Size()
-  screenW, screenH := float64(w), float64(h)
+func (r *Renderer) initShaders() {
   
-  cubeVertices := []Vec3{
-    {pos.X - 0.5, pos.Y - 0.5, pos.Z - 0.5}, // bottom front left
-    {pos.X + 0.5, pos.Y - 0.5, pos.Z - 0.5}, // bottom front right
-    {pos.X + 0.5, pos.Y - 0.5, pos.Z + 0.5}, // bottom back right
-    {pos.X - 0.5, pos.Y - 0.5, pos.Z + 0.5}, // bottom back left
-    {pos.X - 0.5, pos.Y + 0.5, pos.Z - 0.5}, // top front left
-    {pos.X + 0.5, pos.Y + 0.5, pos.Z - 0.5}, // top front right
-    {pos.X + 0.5, pos.Y + 0.5, pos.Z + 0.5}, // top back right
-    {pos.X - 0.5, pos.Y + 0.5, pos.Z + 0.5}, // top back left
-  }
-  
-  var projected [][2]float32
-  for _, v := range cubeVertices {
-    px, py := r.project(v, screenW, screenH)
-    projected = append(projected, [2]float32{px, py})
-  }
-  
-  faces := [][4]int{
-    {0, 1, 5, 4}, // front
-    {1, 2, 6, 5}, // right
-    {2, 3, 7, 6}, // back
-    {3, 0, 4, 7}, // left
-    {4, 5, 6, 7}, // top
-    {0, 1, 2, 3}, // bottom
-  }
-  
-  faceColor := color.RGBA{cubeColor.R / 2, cubeColor.G / 2, cubeColor.B / 2, 200}
-  
-  for _, face := range faces {
-    var path vector.Path
-    path.MoveTo(projected[face[0]][0], projected[face[0]][1])
-    for i := 1; i < 4; i++ {
-      path.LineTo(projected[face[i]][0], projected[face[i]][1])
+  vertexSrc := 
+  `
+    attribute vec3 aPosition;
+    uniform mat4 uMVP;
+    void main() {
+      gl_Position = uMVP * vec4(aPosition, 1.0);
     }
-    path.Close()
-    
-    vertices, indices := path.AppendVerticesAndIndicesForFilling(nil, nil)
-    for i := range vertices {
-      vertices[i].ColorR = float32(faceColor.R) / 255
-      vertices[i].ColorG = float32(faceColor.G) / 255
-      vertices[i].ColorB = float32(faceColor.B) / 255
-      vertices[i].ColorA = float32(faceColor.A) / 255
+  `
+  
+  fragmentSrc :=
+  `
+    uniform vec4 uColor;
+    void main() {
+      gl_FragColor = uColor;
     }
-    screen.DrawTriangles(vertices, indices, emptyImage, nil)
+  `
+  
+  program, err := compileProgram(vertexSrc, fragmentSrc)
+  if err != nil {
+    log.Fatalln("Failed to compile shaders:", err)
   }
   
-  edges := [][2]int{
-    {0, 1}, {1, 2}, {2, 3}, {3, 0},
-    {4, 5}, {5, 6}, {6, 7}, {7, 4},
-    {0, 4}, {1, 5}, {2, 6}, {3, 7},
-  }
-  
-  for _, edge := range edges {
-    p1 := projected[edge[0]]
-    p2 := projected[edge[1]]
-    vector.StrokeLine(screen, p1[0], p1[1], p2[0], p2[1], 1, cubeColor, false)
-  }
+  r.program = program
+  r.mvpLoc = gl.GetUniformLocation(program, gl.Str("uMVP\x00"))
+  r.colorLoc = gl.GetUniformLocation(program, gl.Str("uColor\x00"))
+  r.positionLoc = uint32(gl.GetAttribLocation(program, gl.Str("aPosition\x00")))
 }
 
-var emptyImage = ebiten.NewImage(1, 1)
+func compileProgram(vertexSrc, fragmentSrc string) (uint32, error) {
+  vertexShader, err := compileShader(vertexSrc+"\x00", gl.VERTEX_SHADER)
+  if err != nil {
+    return 0, err
+  }
+  fragmentShader, err := compileShader(fragmentSrc+"\x00", gl.FRAGMENT_SHADER)
+  if err != nil {
+    return 0, err
+  }
 
-func init() {
-  emptyImage.Fill(color.White)
+  program := gl.CreateProgram()
+  gl.AttachShader(program, vertexShader)
+  gl.AttachShader(program, fragmentShader)
+  gl.LinkProgram(program)
+
+  var status int32
+  gl.GetProgramiv(program, gl.LINK_STATUS, &status)
+  if status == gl.FALSE {
+    var logLength int32
+    gl.GetProgramiv(program, gl.INFO_LOG_LENGTH, &logLength)
+    log := make([]byte, logLength+1)
+    gl.GetProgramInfoLog(program, logLength, nil, &log[0])
+    return 0, fmt.Errorf("failed to link program: %s", log)
+  }
+  return program, nil
+}
+
+func compileShader(source string, shaderType uint32) (uint32, error) {
+  shader := gl.CreateShader(shaderType)
+  csources, free := gl.Strs(source)
+  defer free()
+  
+  gl.ShaderSource(shader, 1, csources, nil)
+  gl.CompileShader(shader)
+
+  var status int32
+  gl.GetShaderiv(shader, gl.COMPILE_STATUS, &status)
+  if status == gl.FALSE {
+    var logLength int32
+    gl.GetShaderiv(shader, gl.INFO_LOG_LENGTH, &logLength)
+    log := make([]byte, logLength+1)
+    gl.GetShaderInfoLog(shader, logLength, nil, &log[0])
+    return 0, fmt.Errorf("failed to compile shader: %s", log)
+  }
+  return shader, nil
+}
+
+func (r *Renderer) GetMVP(aspect float32) mgl32.Mat4 {
+
+  proj := mgl32.Perspective(mgl32.DegToRad(45), aspect, 0.1, 100.0)
+
+  view := mgl32.Translate3D(0, 0, -r.cameraDist).
+  Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(r.angleX))).
+  Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(r.angleY)))
+
+  model := mgl32.Ident4()
+
+  return proj.Mul4(view).Mul4(model)
+}
+
+func (r *Renderer) DrawVertices(vertices []float32, color [4]float32, mode uint32, mvp mgl32.Mat4) {
+
+  gl.UseProgram(r.program)
+
+  data := mvp[:]
+  gl.UniformMatrix4fv(r.mvpLoc, 1, false, &data[0])
+  gl.Uniform4f(r.colorLoc, color[0], color[1], color[2], color[3])
+
+  var vbo uint32
+  gl.GenBuffers(1, &vbo)
+  gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+  gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.STATIC_DRAW)
+
+  gl.EnableVertexAttribArray(r.positionLoc)
+  gl.VertexAttribPointer(r.positionLoc, 3, gl.FLOAT, false, 0, nil)
+
+  gl.DrawArrays(mode, 0, int32(len(vertices)/3))
+
+  gl.DisableVertexAttribArray(r.positionLoc)
+  gl.BindBuffer(gl.ARRAY_BUFFER, 0)
+  gl.DeleteBuffers(1, &vbo)
 }
