@@ -7,6 +7,11 @@ import (
   "github.com/go-gl/mathgl/mgl32"
 )
 
+type Shaders struct {
+  Vertex   string
+  Fragment string
+}
+
 type Renderer struct {
   program     uint32
   mvpLoc      int32
@@ -17,13 +22,13 @@ type Renderer struct {
   angleY      float32
 }
 
-func NewRenderer() *Renderer {
+func NewRenderer(shaders *Shaders) *Renderer {
   r := &Renderer{
     cameraDist: 30,
     angleX:     45,
     angleY:     12,
   }
-  r.initShaders()
+  r.initShaders(shaders)
   return r
 }
 
@@ -100,38 +105,9 @@ func (r *Renderer) GetGridVertices(gridSize int) []float32 {
   return lines
 }
 
-func (r *Renderer) initShaders() {
+func (r *Renderer) initShaders(shaders *Shaders) {
   
-  vertexSrc := 
-  `
-    attribute vec3 aPosition;
-    uniform mat4 uMVP;
-    void main() {
-      gl_Position = uMVP * vec4(aPosition, 1.0);
-    }
-  `
-  
-  fragmentSrc :=
-  `
-    precision mediump float;
-    uniform vec4 uColor;
-    void main() {
-      gl_FragColor = uColor;
-    }
-  `
-
-  /*
-   * // pc
-  fragmentSrc :=
-  `
-    uniform vec4 uColor;
-    void main() {
-      gl_FragColor = uColor;
-    }
-  `
-  */
-
-  program, err := compileProgram(vertexSrc, fragmentSrc)
+  program, err := compileProgram(shaders.Vertex, shaders.Fragment)
   if err != nil {
     log.Fatalln("Failed to compile program:", err)
   }
@@ -140,7 +116,6 @@ func (r *Renderer) initShaders() {
   r.mvpLoc = rgl.GetUniformLocation(program, rgl.Str("uMVP\x00"))
   r.colorLoc = rgl.GetUniformLocation(program, rgl.Str("uColor\x00"))
   r.positionLoc = uint32(rgl.GetAttribLocation(program, rgl.Str("aPosition\x00")))
-
 }
 
 func compileProgram(vertexSrc, fragmentSrc string) (uint32, error) {
@@ -155,7 +130,6 @@ func compileProgram(vertexSrc, fragmentSrc string) (uint32, error) {
     return 0, err
   }
 
-  log.Println("INDEX: ", vertexShader, fragmentShader);
   program := rgl.CreateProgram()
 
   rgl.AttachShader(program, vertexShader)

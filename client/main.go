@@ -51,7 +51,23 @@ func main() {
     panic(err)
   }
 
-  game := NewGame(worldState)
+  shaders := &Shaders{
+    Vertex: `
+      attribute vec3 aPosition;
+      uniform mat4 uMVP;
+      void main() {
+        gl_Position = uMVP * vec4(aPosition, 1.0);
+      }
+    `,
+    Fragment: `
+      uniform vec4 uColor;
+        void main() {
+          gl_FragColor = uColor;
+        }
+    `,
+  }
+  
+  game := NewGame(worldState, shaders)
 
   // Main loop
   for !window.ShouldClose() {

@@ -9,9 +9,9 @@ type Game struct {
   worldState *WorldState
 }
 
-func NewGame(worldState *WorldState) *Game {
+func NewGame(worldState *WorldState, shaders *Shaders) *Game {
   return &Game{
-    renderer:   NewRenderer(),
+    renderer:   NewRenderer(shaders),
     worldState: worldState,
   }
 }
