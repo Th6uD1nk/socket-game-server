@@ -200,6 +200,18 @@ func (r *Renderer) GetMVP(aspect float32) mgl32.Mat4 {
 */
 
 func (r *Renderer) UpdateCamera() {
+  if GetPad(LPAD_UP) {
+    r.camera.RotateUp(1.0);
+  }
+  if GetPad(LPAD_DOWN) {
+    r.camera.RotateDown(1.0);
+  }
+  if GetPad(LPAD_LEFT) {
+    r.camera.RotateLeft(1.0);
+  }
+  if GetPad(LPAD_RIGHT) {
+    r.camera.RotateRight(1.0);
+  }
   r.camera.Update()
 }
 

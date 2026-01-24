@@ -11,6 +11,7 @@ import (
   "golang.org/x/mobile/event/lifecycle"
   "golang.org/x/mobile/event/paint"
   "golang.org/x/mobile/event/size"
+  "golang.org/x/mobile/event/touch"
   "golang.org/x/mobile/gl"
   "rtgs-client/rgl"
   "rtgs-client/core"
@@ -26,8 +27,31 @@ func loadConfig() (string, error) {
   return strings.TrimSpace(string(data)), nil
 }
 
-func main() {
+func setupPadZones(screenWidth float32, screenHeight float32) {
+  core.SetLeftPadZone(
+    0,              // left
+    0,              // top
+    screenWidth/2,  // right (half)
+    screenHeight,   // bottom
+  )
   
+  core.SetRightPadZone(
+    screenWidth/2,  // left (half)
+    0,              // top
+    screenWidth,    // right
+    screenHeight,   // bottom
+  )
+}
+
+func handleTouch(e touch.Event) {
+  x := float32(e.X)
+  y := float32(e.Y)
+  pressed := e.Type == touch.TypeBegin || e.Type == touch.TypeMove
+  
+  core.ProcessTouch(x, y, pressed, int(e.Sequence))
+}
+
+func main() {
   worldState := core.NewWorldState()
 
   addr, err := loadConfig()
@@ -49,6 +73,8 @@ func main() {
   app.Main(func(a app.App) {
     var glctx gl.Context
     var width, height int
+    
+    core.NewInputManager()
 
     for e := range a.Events() {
       switch e := a.Filter(e).(type) {
@@ -85,7 +111,11 @@ func main() {
       case size.Event:
         width = int(e.WidthPx)
         height = int(e.HeightPx)
-
+        setupPadZones(float32(width), float32(height))
+      
+      case touch.Event:
+        handleTouch(e)
+        
       case paint.Event:
         if glctx == nil || e.External || game == nil {
           continue

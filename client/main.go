@@ -19,6 +19,32 @@ func init() {
   runtime.LockOSThread()
 }
 
+func initInputs() {
+  core.NewInputManager()
+  core.BindLPadKeys(
+    int(glfw.KeyW), 
+    int(glfw.KeyS), 
+    int(glfw.KeyA), 
+    int(glfw.KeyD),
+  )
+}
+
+func keyCallback(w *glfw.Window, key glfw.Key, scancode int,
+  action glfw.Action, mods glfw.ModifierKey) {
+  pressed := action == glfw.Press || action == glfw.Repeat
+  core.ProcessKeyboard(int(key), pressed)
+}
+
+func mouseButtonCallback(w *glfw.Window, button glfw.MouseButton,
+  action glfw.Action, mods glfw.ModifierKey) {
+  pressed := action == glfw.Press
+  core.ProcessMouseButton(int(button), pressed)
+}
+
+func cursorPosCallback(w *glfw.Window, xpos, ypos float64) {
+  core.ProcessMouseMove(xpos, ypos)
+}
+
 func main() {
   worldState := core.NewWorldState()
 
@@ -47,6 +73,11 @@ func main() {
 
   window.MakeContextCurrent()
   glfw.SwapInterval(1)
+  
+  initInputs()
+  window.SetKeyCallback(keyCallback)
+  window.SetMouseButtonCallback(mouseButtonCallback)
+  window.SetCursorPosCallback(cursorPosCallback)
 
   if err := rgl.Init(); err != nil {
     panic(err)
@@ -73,6 +104,8 @@ func main() {
   // Main loop
   for !window.ShouldClose() {
     w, h := window.GetSize()
+    
+    core.UpdateInputs()
     game.Draw(w, h)
 
     window.SwapBuffers()
